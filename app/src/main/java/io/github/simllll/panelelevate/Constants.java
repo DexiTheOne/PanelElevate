@@ -33,6 +33,10 @@ public class Constants {
     /** Near threshold of a reflectance proximity sensor (NSPanel Pro); far is 3/4 of it. */
     public static final String SP_PROXIMITY_THRESHOLD = "proximityThreshold";
     public static final String SP_SCREEN_SAVER_MIN_BRIGHTNESS = "screenSaverMinBrightness";
+    /** Second standby stage: brightness after {@link #SP_SCREEN_SAVER_DEEP_DELAY} minutes asleep (0 = off). */
+    public static final String SP_SCREEN_SAVER_DEEP_BRIGHTNESS = "screenSaverDeepBrightness";
+    /** Minutes asleep before the second standby stage; 0 disables it. */
+    public static final String SP_SCREEN_SAVER_DEEP_DELAY = "screenSaverDeepDelay";
 
     //MQTT SP Keys
     public static final String SP_MQTT_ENABLED = "mqttEnabled";
@@ -56,6 +60,8 @@ public class Constants {
     //Screen Dimming Intents
     public static final String INTENT_SCREEN_SAVER_STARTED = "io.github.simllll.panelelevate.SCREEN_SAVER_STARTED";
     public static final String INTENT_SCREEN_SAVER_STOPPED = "io.github.simllll.panelelevate.SCREEN_SAVER_STOPPED";
+    /** Standby levels changed (MQTT): re-apply the current stage if asleep. */
+    public static final String INTENT_SCREEN_SAVER_LEVELS_CHANGED = "io.github.simllll.panelelevate.SCREEN_SAVER_LEVELS_CHANGED";
 
     //Sensor Intents
     public static final String INTENT_LIGHT_UPDATED = "io.github.simllll.panelelevate.LIGHT_UPDATED";
@@ -89,6 +95,12 @@ public class Constants {
     public static final String MQTT_TOPIC_DOORBELL_SOUND = "shellyelevateservice/%s/doorbell_sound";
     public static final String MQTT_TOPIC_PROXIMITY_THRESHOLD_COMMAND = "shellyelevateservice/%s/proximity_threshold_set";
     public static final String MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND = "shellyelevateservice/%s/auto_bri_set";
+    public static final String MQTT_TOPIC_STANDBY_BRIGHTNESS = "shellyelevateservice/%s/standby_bri";
+    public static final String MQTT_TOPIC_STANDBY_BRIGHTNESS_COMMAND = "shellyelevateservice/%s/standby_bri_set";
+    public static final String MQTT_TOPIC_STANDBY_DEEP_BRIGHTNESS = "shellyelevateservice/%s/standby_deep_bri";
+    public static final String MQTT_TOPIC_STANDBY_DEEP_BRIGHTNESS_COMMAND = "shellyelevateservice/%s/standby_deep_bri_set";
+    public static final String MQTT_TOPIC_STANDBY_DEEP_DELAY = "shellyelevateservice/%s/standby_deep_delay";
+    public static final String MQTT_TOPIC_STANDBY_DEEP_DELAY_COMMAND = "shellyelevateservice/%s/standby_deep_delay_set";
     public static final String MQTT_TOPIC_PROXIMITY_SENSOR = "shellyelevateservice/%s/proximity";
     public static final String MQTT_TOPIC_PRESENCE = "shellyelevateservice/%s/presence";
     public static final String MQTT_TOPIC_RELAY_STATE = "shellyelevateservice/%s/relay_state";

@@ -332,6 +332,9 @@ public class MQTTServer {
                     parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS_COMMAND),
                     parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND),
                     parseTopic(MQTT_TOPIC_PROXIMITY_THRESHOLD_COMMAND),
+                    parseTopic(MQTT_TOPIC_STANDBY_BRIGHTNESS_COMMAND),
+                    parseTopic(MQTT_TOPIC_STANDBY_DEEP_BRIGHTNESS_COMMAND),
+                    parseTopic(MQTT_TOPIC_STANDBY_DEEP_DELAY_COMMAND),
                     parseTopic(MQTT_TOPIC_BLE_PROXY_COMMAND),
                     parseTopic(MQTT_TOPIC_DOORBELL_DETECT_COMMAND),
                     MQTT_TOPIC_HOME_ASSISTANT_STATUS
@@ -348,6 +351,9 @@ public class MQTTServer {
                 parseTopic(MQTT_TOPIC_SCREEN_BRIGHTNESS_COMMAND),
                 parseTopic(MQTT_TOPIC_AUTO_BRIGHTNESS_COMMAND),
                 parseTopic(MQTT_TOPIC_PROXIMITY_THRESHOLD_COMMAND),
+                parseTopic(MQTT_TOPIC_STANDBY_BRIGHTNESS_COMMAND),
+                parseTopic(MQTT_TOPIC_STANDBY_DEEP_BRIGHTNESS_COMMAND),
+                parseTopic(MQTT_TOPIC_STANDBY_DEEP_DELAY_COMMAND),
                 parseTopic(MQTT_TOPIC_BLE_PROXY_COMMAND),
                 parseTopic(MQTT_TOPIC_DOORBELL_DETECT_COMMAND),
                 MQTT_TOPIC_HOME_ASSISTANT_STATUS
@@ -391,6 +397,7 @@ public class MQTTServer {
             safely("proximity", () -> publishProximity(mDeviceSensorManager.getLastMeasuredDistance()));
         }
         if (device.proximityIsReflectance()) safely("proximity threshold", this::publishProximityThreshold);
+        safely("standby levels", this::publishStandbyLevels);
         safely("sleeping", () -> publishSleeping(sleeping));
         Boolean lastPresence = presence;
         if (lastPresence != null) safely("presence", () -> publishPresence(lastPresence));
@@ -568,6 +575,17 @@ public class MQTTServer {
         int threshold = DeviceModel.clampReflectanceThreshold(
                 mSharedPreferences.getInt(SP_PROXIMITY_THRESHOLD, DeviceModel.REFLECTANCE_NEAR_DEFAULT));
         publishInternal(parseTopic(MQTT_TOPIC_PROXIMITY_THRESHOLD), String.valueOf(threshold), 1, false);
+    }
+
+    /** Standby (screen saver) brightness of both stages and the delay of the second one. */
+    public void publishStandbyLevels() {
+        DeviceModel device = DeviceModel.getReportedDevice();
+        publishInternal(parseTopic(MQTT_TOPIC_STANDBY_BRIGHTNESS), String.valueOf(
+                mSharedPreferences.getInt(SP_SCREEN_SAVER_MIN_BRIGHTNESS, device.defaultScreenSaverMinBrightness)), 1, false);
+        publishInternal(parseTopic(MQTT_TOPIC_STANDBY_DEEP_BRIGHTNESS), String.valueOf(
+                mSharedPreferences.getInt(SP_SCREEN_SAVER_DEEP_BRIGHTNESS, 0)), 1, false);
+        publishInternal(parseTopic(MQTT_TOPIC_STANDBY_DEEP_DELAY), String.valueOf(
+                mSharedPreferences.getInt(SP_SCREEN_SAVER_DEEP_DELAY, 0)), 1, false);
     }
 
     public void publishProximity(float distance) {
@@ -852,9 +870,37 @@ public class MQTTServer {
             components.put(clientId + "_proximity_threshold", thresholdPayload);
         }
 
+        components.put(clientId + "_standby_brightness", standbyNumber("Standby brightness",
+                MQTT_TOPIC_STANDBY_BRIGHTNESS, MQTT_TOPIC_STANDBY_BRIGHTNESS_COMMAND, 0, 255, null,
+                "mdi:brightness-4", clientId + "_standby_brightness"));
+        components.put(clientId + "_standby_deep_brightness", standbyNumber("Standby stage 2 brightness",
+                MQTT_TOPIC_STANDBY_DEEP_BRIGHTNESS, MQTT_TOPIC_STANDBY_DEEP_BRIGHTNESS_COMMAND, 0, 255, null,
+                "mdi:brightness-1", clientId + "_standby_deep_brightness"));
+        components.put(clientId + "_standby_deep_delay", standbyNumber("Standby stage 2 after",
+                MQTT_TOPIC_STANDBY_DEEP_DELAY, MQTT_TOPIC_STANDBY_DEEP_DELAY_COMMAND, 0, 720, "min",
+                "mdi:timer-sand", clientId + "_standby_deep_delay"));
+
         configPayload.put("cmps", components);
 
         publishInternal(parseTopic(MQTT_TOPIC_CONFIG_DEVICE), configPayload.toString(), 1, true);
+    }
+
+    private JSONObject standbyNumber(String name, String stateTopic, String commandTopic, int min, int max,
+                                     String unit, String icon, String uniqueId) throws JSONException {
+        JSONObject payload = new JSONObject();
+        payload.put("p", "number");
+        payload.put("name", name);
+        payload.put("state_topic", parseTopic(stateTopic));
+        payload.put("command_topic", parseTopic(commandTopic));
+        payload.put("min", min);
+        payload.put("max", max);
+        payload.put("step", 1);
+        payload.put("mode", "box");
+        if (unit != null) payload.put("unit_of_measurement", unit);
+        payload.put("entity_category", "config");
+        payload.put("icon", icon);
+        payload.put("unique_id", uniqueId);
+        return payload;
     }
 
     private static String getVersionName() {

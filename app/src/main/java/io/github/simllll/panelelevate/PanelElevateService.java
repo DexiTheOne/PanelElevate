@@ -87,6 +87,9 @@ public class PanelElevateService extends Service {
     private volatile boolean isDimmed = false;
     private volatile long dimmedAt = 0;
     private static final long EXTERNAL_WAKE_GRACE_MS = 5_000;
+    /** Second standby stage reached (see SP_SCREEN_SAVER_DEEP_DELAY). */
+    private volatile boolean deepDimmed = false;
+    private final Runnable deepDimRunnable = this::enterDeepDim;
     private volatile boolean keepAliveFlag = false;
 
     // Auto-brightness only rewrites the brightness when it moves at least this many steps
@@ -136,6 +139,14 @@ public class PanelElevateService extends Service {
                 Log.i(TAG, "Calling wakeScreen() from broadcast");
                 wakeScreen();
             }
+        }
+    };
+
+    // Standby levels changed via MQTT: re-apply the current stage right away (e.g. "away = black")
+    private final BroadcastReceiver standbyLevelsReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            reapplyStandbyLevel();
         }
     };
 
@@ -338,6 +349,7 @@ public class PanelElevateService extends Service {
         wakeSleepFilter.addAction(INTENT_SCREEN_SAVER_STARTED);
         wakeSleepFilter.addAction(INTENT_SCREEN_SAVER_STOPPED);
         lbm.registerReceiver(wakeSleepReceiver, wakeSleepFilter);
+        lbm.registerReceiver(standbyLevelsReceiver, new IntentFilter(INTENT_SCREEN_SAVER_LEVELS_CHANGED));
 
         // Restart app from MQTT
         lbm.registerReceiver(restartAppReceiver, new IntentFilter(INTENT_RESTART_APP));
@@ -605,18 +617,9 @@ public class PanelElevateService extends Service {
         isDimmed = true;
         dimmedAt = SystemClock.elapsedRealtime();
 
-        int minBrightness = sharedPreferences.getInt(SP_SCREEN_SAVER_MIN_BRIGHTNESS, device.defaultScreenSaverMinBrightness);
-        if (minBrightness <= 0 && screenPower != null && screenPower.isUsable()) {
-            // Lowest brightness is still lit here: switch the display off instead
-            Log.i(TAG, "Switching screen off via " + screenPower.name());
-            mainHandler.post(() -> {
-                deviceHelper.markScreenOff();
-                screenPower.screenOff();
-            });
-        } else {
-            Log.i(TAG, "Dimming screen to brightness=" + minBrightness);
-            mainHandler.post(() -> deviceHelper.setScreenBrightness(minBrightness));
-        }
+        deepDimmed = false;
+        applyStandbyBrightness(sharedPreferences.getInt(SP_SCREEN_SAVER_MIN_BRIGHTNESS, device.defaultScreenSaverMinBrightness));
+        scheduleDeepDim();
 
         // Publish state via MQTT (also remembered for re-publishing after a reconnect).
         // No INTENT_SCREEN_SAVER_STARTED broadcast here: that is the sleep *request* this service
@@ -643,6 +646,7 @@ public class PanelElevateService extends Service {
             return;
         }
         isDimmed = false;
+        cancelDeepDim();
         lastInteractionTime = System.currentTimeMillis();
         turnScreenOnIfOff();
 
@@ -666,6 +670,62 @@ public class PanelElevateService extends Service {
         // Broadcast for any listeners
         LocalBroadcastManager.getInstance(this)
                 .sendBroadcast(new Intent(INTENT_SCREEN_SAVER_STOPPED));
+    }
+
+    /** Standby brightness; 0 switches the display off where the lowest brightness is still lit. */
+    private void applyStandbyBrightness(int level) {
+        if (level <= 0 && screenPower != null && screenPower.isUsable()) {
+            Log.i(TAG, "Switching screen off via " + screenPower.name());
+            mainHandler.post(() -> {
+                deviceHelper.markScreenOff();
+                screenPower.screenOff();
+            });
+        } else {
+            Log.i(TAG, "Dimming screen to brightness=" + level);
+            mainHandler.post(() -> deviceHelper.setScreenBrightness(Math.max(0, level)));
+        }
+    }
+
+    /** Second standby stage after SP_SCREEN_SAVER_DEEP_DELAY minutes asleep (0 = no second stage). */
+    private void scheduleDeepDim() {
+        mainHandler.removeCallbacks(deepDimRunnable);
+        int minutes = sharedPreferences.getInt(SP_SCREEN_SAVER_DEEP_DELAY, 0);
+        if (minutes > 0 && isDimmed && !deepDimmed) {
+            long elapsed = SystemClock.elapsedRealtime() - dimmedAt;
+            mainHandler.postDelayed(deepDimRunnable, Math.max(0, minutes * 60_000L - elapsed));
+        }
+    }
+
+    private void cancelDeepDim() {
+        mainHandler.removeCallbacks(deepDimRunnable);
+        deepDimmed = false;
+    }
+
+    private void enterDeepDim() {
+        if (!isDimmed || deepDimmed) return;
+        deepDimmed = true;
+        int level = sharedPreferences.getInt(SP_SCREEN_SAVER_DEEP_BRIGHTNESS, 0);
+        Log.i(TAG, "Standby stage 2: brightness=" + level);
+        applyStandbyBrightness(level);
+    }
+
+    /** Standby levels changed while asleep: apply the current stage again and re-plan stage 2. */
+    private void reapplyStandbyLevel() {
+        if (!isDimmed) return;
+        int minutes = sharedPreferences.getInt(SP_SCREEN_SAVER_DEEP_DELAY, 0);
+        if (deepDimmed && minutes > 0) {
+            applyStandbyLevelChange(sharedPreferences.getInt(SP_SCREEN_SAVER_DEEP_BRIGHTNESS, 0));
+            return;
+        }
+        deepDimmed = false;
+        applyStandbyLevelChange(sharedPreferences.getInt(SP_SCREEN_SAVER_MIN_BRIGHTNESS, device.defaultScreenSaverMinBrightness));
+        scheduleDeepDim();
+    }
+
+    /** A lit level after a screen-off one needs the display switched on again first. */
+    private void applyStandbyLevelChange(int level) {
+        if (level > 0) turnScreenOnIfOff();
+        applyStandbyBrightness(level);
     }
 
     private boolean isScreenInteractive() {
@@ -931,6 +991,8 @@ public class PanelElevateService extends Service {
         lbm.unregisterReceiver(proximityReceiver);
         lbm.unregisterReceiver(lightReceiver);
         lbm.unregisterReceiver(wakeSleepReceiver);
+        lbm.unregisterReceiver(standbyLevelsReceiver);
+        mainHandler.removeCallbacks(deepDimRunnable);
         lbm.unregisterReceiver(restartAppReceiver);
         lbm.unregisterReceiver(watchdogSettingsReceiver);
         lbm.unregisterReceiver(brightnessReceiver);

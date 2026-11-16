@@ -119,12 +119,34 @@ public class PanelElevateMQTTCallback {
                     Log.w("MQTT", "Ignoring invalid proximity threshold: " + payload);
                 }
                 break;
+            case MQTT_TOPIC_STANDBY_BRIGHTNESS_COMMAND:
+                storeStandbyLevel(SP_SCREEN_SAVER_MIN_BRIGHTNESS, payload, 255);
+                break;
+            case MQTT_TOPIC_STANDBY_DEEP_BRIGHTNESS_COMMAND:
+                storeStandbyLevel(SP_SCREEN_SAVER_DEEP_BRIGHTNESS, payload, 255);
+                break;
+            case MQTT_TOPIC_STANDBY_DEEP_DELAY_COMMAND:
+                storeStandbyLevel(SP_SCREEN_SAVER_DEEP_DELAY, payload, 720);
+                break;
             case MQTT_TOPIC_RESTART_APP_BUTTON:
                 // Broadcast to PanelElevateService to kill and restart the watchdog app
                 Log.i("MQTT", "Restart app command received");
                 Intent restartIntent = new Intent(INTENT_RESTART_APP);
                 LocalBroadcastManager.getInstance(mApplicationContext).sendBroadcast(restartIntent);
                 break;
+        }
+    }
+
+    /** Stores a standby level (0..max) and lets the service re-apply the current stage. */
+    private void storeStandbyLevel(String key, String payload, int max) {
+        try {
+            int value = Math.max(0, Math.min(max, (int) Math.round(Double.parseDouble(payload.trim()))));
+            PanelElevateApplication.mSharedPreferences.edit().putInt(key, value).apply();
+            mMQTTServer.publishStandbyLevels();
+            LocalBroadcastManager.getInstance(mApplicationContext)
+                    .sendBroadcast(new Intent(INTENT_SCREEN_SAVER_LEVELS_CHANGED));
+        } catch (NumberFormatException e) {
+            Log.w("MQTT", "Ignoring invalid standby value for " + key + ": " + payload);
         }
     }
 }
