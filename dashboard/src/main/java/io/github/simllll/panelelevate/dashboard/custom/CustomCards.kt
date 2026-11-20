@@ -16,6 +16,7 @@ fun CardRegistry.registerCustomCards() {
     register("custom:timer-bar-card") { TimerBarCard(it) }
     register("custom:fab-card") { FabCard(it) }
     register("custom:mushroom-climate-card") { MushroomClimateCard(it) }
+    register("custom:lock-feedback-card") { LockFeedbackCard(it) }
 }
 
 /** Custom rows used inside entities cards (also as auto-entities results). */
