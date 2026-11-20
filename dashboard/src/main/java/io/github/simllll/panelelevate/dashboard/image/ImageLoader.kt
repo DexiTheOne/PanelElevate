@@ -3,16 +3,23 @@ package io.github.simllll.panelelevate.dashboard.image
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Movie
 import android.graphics.RectF
 import android.util.Log
 import android.util.LruCache
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas as ComposeCanvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.withFrameMillis
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,6 +52,14 @@ class ImageLoader(private val hass: HassClient, cacheDir: File) {
         override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
     }
 
+    // Raw bytes of animated GIFs, so RemoteImage can play them (the bitmap cache only holds frame 1)
+    private val gifs = object : LruCache<String, ByteArray>(8 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: ByteArray) = value.size
+    }
+
+    /** The raw GIF of [url] if [load] found one (null for other formats or before loading). */
+    fun gifBytes(url: String): ByteArray? = gifs.get(url)
+
     fun cached(url: String, targetWidth: Int): ImageBitmap? = memory.get(key(url, targetWidth))
 
     /**
@@ -67,6 +82,7 @@ class ImageLoader(private val hass: HassClient, cacheDir: File) {
                 svg = response.body.contentType()?.subtype?.contains("svg") == true
                 response.body.bytes()
             }
+            if (isGif(bytes)) gifs.put(url, bytes)
             if (svg || isSvg(url, bytes)) {
                 return@withContext renderSvg(bytes, targetWidth)?.asImageBitmap()?.also { memory.put(key, it) }
             }
@@ -85,6 +101,9 @@ class ImageLoader(private val hass: HassClient, cacheDir: File) {
     }
 
     private fun key(url: String, width: Int) = "$width|$url"
+
+    private fun isGif(bytes: ByteArray) = bytes.size > 6 && bytes[0] == 'G'.code.toByte() && bytes[1] == 'I'.code.toByte() && bytes[2] == 'F'.code.toByte()
+
 
     private fun isSvg(url: String, bytes: ByteArray): Boolean {
         if (url.substringBefore('?').endsWith(".svg", ignoreCase = true)) return true
@@ -151,9 +170,18 @@ fun RemoteImage(
         }
     }
     val image = bitmap
+    // Animated GIF: played with android.graphics.Movie (AnimatedImageDrawable needs API 28, the
+    // NSPanel Pro runs 27). Movie is deprecated but still decodes GIFs on every version we support.
+    @Suppress("DEPRECATION")
+    val movie = remember(url, image) {
+        url?.let { loader.gifBytes(it) }?.let { Movie.decodeByteArray(it, 0, it.size) }
+            ?.takeIf { it.width() > 0 && it.height() > 0 && it.duration() > 0 }
+    }
     val sized = if (keepAspectRatio && image != null) modifier.aspectRatio(image.width.toFloat() / image.height.coerceAtLeast(1)) else modifier
     Box(sized.onSizeChanged { size = it }) {
-        if (image != null) {
+        if (movie != null) {
+            GifFrames(movie, contentScale, Modifier.matchParentSize())
+        } else if (image != null) {
             Image(
                 bitmap = image,
                 contentDescription = contentDescription,
@@ -162,5 +190,37 @@ fun RemoteImage(
                 modifier = Modifier.matchParentSize(),
             )
         }
+    }
+}
+
+@Suppress("DEPRECATION")
+@Composable
+private fun GifFrames(movie: Movie, contentScale: ContentScale, modifier: Modifier) {
+    val time by produceState(0L, movie) {
+        val start = withFrameMillis { it }
+        while (true) withFrameMillis { value = it - start }
+    }
+    // Movie draws scaled by the canvas density; render each frame 1:1 into an offscreen bitmap
+    // (DENSITY_NONE) and scale that ourselves, so the frame size matches the layout exactly.
+    val frame = remember(movie) { Bitmap.createBitmap(movie.width(), movie.height(), Bitmap.Config.ARGB_8888) }
+    val frameCanvas = remember(frame) { Canvas(frame).apply { density = Bitmap.DENSITY_NONE } }
+    val frameImage = remember(frame) { frame.asImageBitmap() }
+    ComposeCanvas(modifier.clipToBounds()) {
+        frame.eraseColor(android.graphics.Color.TRANSPARENT)
+        movie.setTime((time % movie.duration()).toInt())
+        movie.draw(frameCanvas, 0f, 0f)
+        val mw = frame.width.toFloat()
+        val mh = frame.height.toFloat()
+        val fit = minOf(size.width / mw, size.height / mh)
+        val crop = maxOf(size.width / mw, size.height / mh)
+        val scale = if (contentScale == ContentScale.Crop) crop else fit
+        val w = (mw * scale).toInt()
+        val h = (mh * scale).toInt()
+        drawImage(
+            frameImage,
+            dstOffset = IntOffset(((size.width - w) / 2f).toInt(), ((size.height - h) / 2f).toInt()),
+            dstSize = IntSize(w, h),
+            filterQuality = FilterQuality.Low,
+        )
     }
 }

@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
@@ -35,6 +37,8 @@ import io.github.simllll.panelelevate.dashboard.cards.CardContext
 import io.github.simllll.panelelevate.dashboard.cards.CardRenderer
 import io.github.simllll.panelelevate.dashboard.cards.HaCard
 import io.github.simllll.panelelevate.dashboard.json.string
+import io.github.simllll.panelelevate.dashboard.image.RemoteImage
+import androidx.compose.ui.layout.ContentScale
 import io.github.simllll.panelelevate.dashboard.theme.HaTheme
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
@@ -45,6 +49,7 @@ import kotlinx.serialization.json.JsonObject
  *
  * - `action`: `lock` (shackle snaps shut, green) or `unlock` (shackle springs open, amber)
  * - `text`: line below the padlock (optional)
+ * - `image`: an image or animated GIF (e.g. `/local/gifs/hi.gif`) shown instead of the padlock (optional)
  *
  * The animation runs once each time the card is shown: the shackle moves with a slight bounce
  * while a ring around the padlock fills up.
@@ -52,6 +57,7 @@ import kotlinx.serialization.json.JsonObject
 class LockFeedbackCard(config: JsonObject) : CardRenderer {
     private val unlock = config.string("action") == "unlock"
     private val text = config.string("text")
+    private val image = config.string("image")
 
     @Composable
     override fun Content(ctx: CardContext, modifier: Modifier) {
@@ -77,7 +83,14 @@ class LockFeedbackCard(config: JsonObject) : CardRenderer {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Box(Modifier.size(132.dp), contentAlignment = Alignment.Center) {
+                if (!image.isNullOrBlank()) {
+                    RemoteImage(
+                        ctx.images, ctx.hass.absoluteUrl(image),
+                        // Fixed height: the card is measured before the GIF has loaded
+                        Modifier.fillMaxWidth().height(200.dp).clipToBounds(),
+                        contentScale = ContentScale.Fit,
+                    )
+                } else Box(Modifier.size(132.dp), contentAlignment = Alignment.Center) {
                     Canvas(Modifier.size(132.dp)) {
                         val stroke = 6.dp.toPx()
                         // Ring track + progress
