@@ -17,6 +17,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import org.eclipse.paho.mqttv5.client.IMqttToken;
 import org.eclipse.paho.mqttv5.client.MqttCallback;
 import org.eclipse.paho.mqttv5.client.MqttClient;
+import org.eclipse.paho.mqttv5.client.MqttClientException;
 import org.eclipse.paho.mqttv5.client.MqttConnectionOptions;
 import org.eclipse.paho.mqttv5.client.MqttDisconnectResponse;
 import org.eclipse.paho.mqttv5.client.persist.MemoryPersistence;
@@ -35,6 +36,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import io.github.simllll.panelelevate.DeviceModel;
 
@@ -44,6 +46,15 @@ public class MQTTServer {
     private static final long TEMP_HUM_INTERVAL_SEC = 30;
     private static final long MIN_BRIGHTNESS_PUBLISH_INTERVAL_MS = 500;
     private static final long CONNECT_RETRY_DELAY_SEC = 60;
+    // Re-announce "online" (retained) this often: a will message the broker sends late (e.g. for a
+    // half-open old connection it only notices after the reconnect) would otherwise leave the
+    // device unavailable in Home Assistant although we are connected.
+    private static final long ONLINE_HEARTBEAT_SEC = 300;
+    private static final long ONLINE_REANNOUNCE_DELAY_SEC = 5;
+    // Consecutive publish timeouts after which the connection is treated as dead and rebuilt.
+    // Paho keeps a half-open connection "connected" while every publish times out (32000).
+    private static final int MAX_PUBLISH_TIMEOUTS = 3;
+    private final AtomicInteger publishTimeouts = new AtomicInteger();
 
     // Written on the scheduler thread, read from sensor/UI/HTTP threads
     private volatile MqttClient mMqttClient;
@@ -80,6 +91,7 @@ public class MQTTServer {
         setupClientId();
         registerSettingsReceiver();
         schedulePeriodicTempHum();
+        scheduleOnlineHeartbeat();
 
         checkCredsAndConnect();
     }
@@ -102,6 +114,21 @@ public class MQTTServer {
         };
         LocalBroadcastManager.getInstance(mApplicationContext)
                 .registerReceiver(settingsChangedReceiver, new IntentFilter(INTENT_SETTINGS_CHANGED));
+    }
+
+    private void scheduleOnlineHeartbeat() {
+        scheduler.scheduleWithFixedDelay(() -> {
+            try {
+                if (isEnabled() && isClientConnected()) publishOnline();
+            } catch (Throwable t) {
+                // an escaping exception would cancel the fixed-delay schedule for good
+                Log.e("MQTT", "Online heartbeat failed", t);
+            }
+        }, ONLINE_HEARTBEAT_SEC, ONLINE_HEARTBEAT_SEC, TimeUnit.SECONDS);
+    }
+
+    private void publishOnline() {
+        publishInternal(parseTopic(MQTT_TOPIC_STATUS), "online", 1, true);
     }
 
     private void schedulePeriodicTempHum() {
@@ -313,6 +340,10 @@ public class MQTTServer {
                         client.subscribe(topic, 1);
                     }
                     publishStatus();
+                    // Again shortly after, in case the broker publishes the old connection's will late
+                    schedule(() -> {
+                        if (isClientConnected()) publishOnline();
+                    }, ONLINE_REANNOUNCE_DELAY_SEC, TimeUnit.SECONDS);
                 } catch (Exception e) {
                     Log.e("MQTT", "onConnected error", e);
                 }
@@ -424,6 +455,27 @@ public class MQTTServer {
         }
     }
 
+    /** Half-open connection (publishes keep timing out): drop it without waiting and connect anew. */
+    private void forceReconnect(MqttClient client) {
+        execute(() -> {
+            if (client != mMqttClient) return;
+            Log.w("MQTT", "Publishes keep timing out, rebuilding the connection");
+            mMqttClient = null;
+            try {
+                client.disconnectForcibly(0, 1000, false);
+            } catch (MqttException e) {
+                Log.w("MQTT", "Forced disconnect failed", e);
+            }
+            try {
+                client.close();
+            } catch (MqttException e) {
+                Log.w("MQTT", "Error closing MQTT client", e);
+            }
+            connecting.set(false);
+            schedule(this::connect, RECONNECT_DELAY_SEC, TimeUnit.SECONDS);
+        });
+    }
+
     private static void closeClient(MqttClient client) {
         try {
             if (client.isConnected()) client.disconnect();
@@ -476,8 +528,14 @@ public class MQTTServer {
             message.setQos(qos);
             message.setRetained(retained);
             client.publish(topic, message);
+            publishTimeouts.set(0);
         } catch (MqttException e) {
             Log.e("MQTT", "Failed to publish to " + topic, e);
+            if (e.getReasonCode() == MqttClientException.REASON_CODE_CLIENT_TIMEOUT
+                    && publishTimeouts.incrementAndGet() >= MAX_PUBLISH_TIMEOUTS) {
+                publishTimeouts.set(0);
+                forceReconnect(client);
+            }
         }
     }
 
