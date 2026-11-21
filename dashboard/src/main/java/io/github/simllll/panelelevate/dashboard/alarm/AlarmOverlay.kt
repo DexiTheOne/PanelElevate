@@ -117,11 +117,13 @@ class AlarmWatcher(private val context: Context, private val hass: HassClient, p
 
 /**
  * Full-screen pulsing glow while the alarm is active: red for `triggered`, orange for `pending`.
- * Draws only, it has no pointer input, so touches reach the dashboard and the popup layer above
- * (alarm keypad) stays usable.
+ * Drawn on top of the popups (the keypad popup is full-screen on small panels), with a light centre
+ * so the keypad stays readable. Draws only, it has no pointer input, so touches go through.
+ * [showLabel] false hides the pill (a popup is open: its title says it, and on small panels the
+ * pill would cover the keypad's bottom row).
  */
 @Composable
-fun AlarmOverlayLayer(state: String?) {
+fun AlarmOverlayLayer(state: String?, showLabel: Boolean = true) {
     if (!AlarmWatcher.isActive(state)) return
     val triggered = state == "triggered"
     val color = if (triggered) Color(0xFFFF1A1A) else Color(0xFFFF8C00)
@@ -137,24 +139,24 @@ fun AlarmOverlayLayer(state: String?) {
         Modifier
             .fillMaxSize()
             .drawBehind {
-                drawRect(color.copy(alpha = 0.08f + 0.27f * pulse))
+                drawRect(color.copy(alpha = 0.04f + 0.14f * pulse))
                 // Glowing edges: transparent centre, saturated border.
                 drawRect(
                     Brush.radialGradient(
-                        0.45f to Color.Transparent,
+                        0.5f to Color.Transparent,
                         1f to color.copy(alpha = 0.55f + 0.4f * pulse),
                         center = center,
                         radius = size.maxDimension * 0.75f,
                     )
                 )
             },
-        contentAlignment = Alignment.TopCenter,
+        contentAlignment = Alignment.BottomCenter,
     ) {
-        BasicText(
+        if (showLabel) BasicText(
             if (triggered) "🚨 ALARM" else "🔒 Code eingeben",
             style = t.style(t.size2xl, FontWeight.Bold, color = Color.White),
             modifier = Modifier
-                .padding(top = 24.dp)
+                .padding(bottom = 20.dp)
                 .background(color.copy(alpha = 0.85f), RoundedCornerShape(50))
                 .padding(horizontal = 24.dp, vertical = 10.dp),
         )

@@ -78,10 +78,11 @@ fun DashboardScreen(runtime: DashboardRuntime) {
             // Above the view, below every popup: browser_mod popups (alarm keypad) stay usable.
             val lockConfig by runtime.guestLockConfig.collectAsState()
             GuestLockLayer(runtime.guestLock, lockConfig, runtime.cardContext)
-            // Alarm glow above the view and the guest lock, below the popups (keypad stays usable).
-            val alarmState by runtime.alarm.state.collectAsState()
-            AlarmOverlayLayer(alarmState)
             runtime.popups.Layer(runtime.cardContext)
+            // Alarm glow on top of everything, also the (often full-screen) keypad popup; it has no
+            // pointer input, so the keypad underneath stays usable.
+            val alarmState by runtime.alarm.state.collectAsState()
+            AlarmOverlayLayer(alarmState, showLabel = !runtime.popups.isShowingPopup)
             runtime.buttonFeedback.Layer()
             ConnectionIndicator(connection)
         }
