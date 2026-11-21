@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.compose.runtime.snapshotFlow
 import io.github.simllll.panelelevate.dashboard.actions.ActionHandler
+import io.github.simllll.panelelevate.dashboard.alarm.AlarmWatcher
 import io.github.simllll.panelelevate.dashboard.actions.Navigator
 import io.github.simllll.panelelevate.dashboard.browsermod.BrowserMod
 import io.github.simllll.panelelevate.dashboard.browsermod.BrowserModPlayer
@@ -55,6 +56,7 @@ sealed interface LovelaceState {
  * connection and entity states are kept across configuration changes.
  */
 class DashboardRuntime private constructor(context: Context) {
+    private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val settings = DashboardSettings(context)
     val hass = HassClient(CoroutineScope(SupervisorJob() + Dispatchers.Default))
@@ -92,6 +94,9 @@ class DashboardRuntime private constructor(context: Context) {
     val guestLockConfig: StateFlow<GuestLockConfig> = _guestLockConfig.asStateFlow()
     val guestLock = GuestLock()
 
+    /** Alarm overlay state, see [AlarmWatcher]. */
+    val alarm = AlarmWatcher(appContext, hass, scope)
+
     private val _lovelace = MutableStateFlow<LovelaceState>(LovelaceState.NotConfigured)
     val lovelace: StateFlow<LovelaceState> = _lovelace.asStateFlow()
 
@@ -124,6 +129,7 @@ class DashboardRuntime private constructor(context: Context) {
         browserMod.setBrowserId(settings.browserId)
         _returnHomeAfterS.value = settings.returnHomeAfterS
         _guestLockConfig.value = settings.guestLock
+        alarm.setEntity(settings.alarmEntity)
         val urlPath = settings.dashboard
         if (dashboardJob != null && urlPath == dashboardPath) return
         val switched = dashboardJob != null

@@ -26,6 +26,7 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import io.github.simllll.panelelevate.dashboard.alarm.AlarmOverlayLayer
 import io.github.simllll.panelelevate.dashboard.browsermod.browserModReporting
 import io.github.simllll.panelelevate.dashboard.cards.CardContext
 import io.github.simllll.panelelevate.dashboard.hass.ConnectionState
@@ -78,6 +79,10 @@ fun DashboardScreen(runtime: DashboardRuntime) {
             val lockConfig by runtime.guestLockConfig.collectAsState()
             GuestLockLayer(runtime.guestLock, lockConfig, runtime.cardContext)
             runtime.popups.Layer(runtime.cardContext)
+            // Alarm glow on top of everything, also the (often full-screen) keypad popup; it has no
+            // pointer input, so the keypad underneath stays usable.
+            val alarmState by runtime.alarm.state.collectAsState()
+            AlarmOverlayLayer(alarmState, showLabel = !runtime.popups.isShowingPopup)
             runtime.buttonFeedback.Layer()
             ConnectionIndicator(connection)
         }
