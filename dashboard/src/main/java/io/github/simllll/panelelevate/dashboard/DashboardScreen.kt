@@ -26,6 +26,7 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import io.github.simllll.panelelevate.dashboard.alarm.AlarmOverlayLayer
 import io.github.simllll.panelelevate.dashboard.browsermod.browserModReporting
 import io.github.simllll.panelelevate.dashboard.cards.CardContext
 import io.github.simllll.panelelevate.dashboard.hass.ConnectionState
@@ -77,6 +78,9 @@ fun DashboardScreen(runtime: DashboardRuntime) {
             // Above the view, below every popup: browser_mod popups (alarm keypad) stay usable.
             val lockConfig by runtime.guestLockConfig.collectAsState()
             GuestLockLayer(runtime.guestLock, lockConfig, runtime.cardContext)
+            // Alarm glow above the view and the guest lock, below the popups (keypad stays usable).
+            val alarmState by runtime.alarm.state.collectAsState()
+            AlarmOverlayLayer(alarmState)
             runtime.popups.Layer(runtime.cardContext)
             runtime.buttonFeedback.Layer()
             ConnectionIndicator(connection)

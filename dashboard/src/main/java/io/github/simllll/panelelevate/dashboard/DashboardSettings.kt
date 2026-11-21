@@ -2,6 +2,7 @@ package io.github.simllll.panelelevate.dashboard
 
 import android.content.Context
 import android.content.SharedPreferences
+import io.github.simllll.panelelevate.dashboard.alarm.AlarmContract
 import io.github.simllll.panelelevate.dashboard.hass.HassConfig
 import io.github.simllll.panelelevate.dashboard.lock.GuestLockConfig
 
@@ -53,6 +54,13 @@ class DashboardSettings(context: Context) {
                 ?: GuestLockConfig.DEFAULT_SLEEP_AFTER_S,
         )
 
+    /**
+     * Alarm panel whose `triggered`/`pending` state pulses the whole screen red/orange (see
+     * `AlarmOverlayLayer`): `alarm_entity` (default `alarm_control_panel.alarmanlage`, `none` = off).
+     */
+    val alarmEntity: String?
+        get() = optionalSetting(KEY_ALARM_ENTITY, AlarmContract.DEFAULT_ENTITY)
+
     /** The stored value, else [default]; `none` = null. */
     private fun optionalSetting(key: String, default: String): String? =
         (prefs.getString(key, null)?.trim()?.takeIf { it.isNotEmpty() } ?: default).takeUnless { it.equals("none", ignoreCase = true) }
@@ -75,9 +83,10 @@ class DashboardSettings(context: Context) {
         const val KEY_LOCK_ENTITY = "lock_entity"
         const val KEY_LOCK_VIDEO = "lock_video"
         const val KEY_LOCK_SLEEP_AFTER_S = "lock_sleep_after_s"
+        const val KEY_ALARM_ENTITY = "alarm_entity"
         const val DEFAULT_BROWSER_ID = "walldisplay Wohnbereich"
         const val DEFAULT_RETURN_HOME_AFTER_S = 120
         val ALL_KEYS = listOf(KEY_URL, KEY_TOKEN, KEY_DASHBOARD, KEY_SCALE, KEY_BROWSER_ID, KEY_RETURN_HOME_AFTER_S,
-            KEY_LOCK_ENTITY, KEY_LOCK_VIDEO, KEY_LOCK_SLEEP_AFTER_S)
+            KEY_LOCK_ENTITY, KEY_LOCK_VIDEO, KEY_LOCK_SLEEP_AFTER_S, KEY_ALARM_ENTITY)
     }
 }

@@ -20,7 +20,8 @@ import android.util.Log
  * `--es browser_id 'walldisplay Eingang'` (see [DashboardSettings.browserId]),
  * `--es return_home_after_s 60` (see [DashboardSettings.returnHomeAfterS]; 0 = off),
  * `--es lock_entity binary_sensor.x`, `--es lock_video /local/x.mp4`, `--es lock_sleep_after_s 10`
- * (guest lock, see [DashboardSettings.guestLock]; `none` turns the lock or its video off).
+ * (guest lock, see [DashboardSettings.guestLock]; `none` turns the lock or its video off),
+ * `--es alarm_entity alarm_control_panel.x` (alarm overlay, see [DashboardSettings.alarmEntity]; `none` = off).
  *
  * A running dashboard (same process) picks the change up immediately.
  */

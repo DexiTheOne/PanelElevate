@@ -37,6 +37,7 @@ import io.github.simllll.panelelevate.helper.MediaHelper;
 import io.github.simllll.panelelevate.helper.ScreenOffTimeoutStrategy;
 import io.github.simllll.panelelevate.helper.ScreenPowerStrategy;
 import io.github.simllll.panelelevate.helper.ServiceHelper;
+import io.github.simllll.panelelevate.dashboard.alarm.AlarmContract;
 import io.github.simllll.panelelevate.dashboard.lock.GuestLockContract;
 import io.github.simllll.panelelevate.audio.ChimeDetector;
 import io.github.simllll.panelelevate.audio.DoorbellListener;
@@ -156,6 +157,16 @@ public class PanelElevateService extends Service {
         public void onReceive(Context context, Intent intent) {
             Log.i(TAG, "Dashboard guest lock requests sleep");
             dimScreen();
+        }
+    };
+
+    // Alarm from the native dashboard (:dashboard process, see AlarmContract): wake and stay awake
+    private final BroadcastReceiver dashboardAlarmReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            Log.i(TAG, "Dashboard alarm: keeping the display awake");
+            lastInteractionTime = System.currentTimeMillis();
+            wakeScreen();
         }
     };
 
@@ -365,6 +376,8 @@ public class PanelElevateService extends Service {
         // :dashboard process can ask for sleep. Same path as MQTT `sleep`.
         ContextCompat.registerReceiver(this, dashboardSleepReceiver,
                 new IntentFilter(GuestLockContract.ACTION_SLEEP), ContextCompat.RECEIVER_NOT_EXPORTED);
+        ContextCompat.registerReceiver(this, dashboardAlarmReceiver,
+                new IntentFilter(AlarmContract.ACTION_KEEP_AWAKE), ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
     private void startIdleChecker() {
@@ -998,6 +1011,11 @@ public class PanelElevateService extends Service {
         lbm.unregisterReceiver(brightnessReceiver);
         try {
             unregisterReceiver(dashboardSleepReceiver);
+        } catch (IllegalArgumentException ignored) {
+            // not registered
+        }
+        try {
+            unregisterReceiver(dashboardAlarmReceiver);
         } catch (IllegalArgumentException ignored) {
             // not registered
         }
