@@ -61,7 +61,7 @@ class ButtonCard(config: JsonObject) : CardRenderer {
         val t = HaTheme.typography
         val color = stateColor(entity, config.string("color"), c.stateIcon)
         val name = config.string("name") ?: entity?.friendlyName ?: ""
-        HaCard(modifier.fillMaxSize()) {
+        HaCard(modifier.fillMaxSize(), propagateMinConstraints = true) {
             Layout(
                 content = {
                     // Sized by the layout below (fixed constraints override the 0dp preference).

@@ -1,14 +1,17 @@
 package io.github.simllll.panelelevate.dashboard.cards
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.PaddingValues
@@ -54,6 +57,7 @@ import io.github.simllll.panelelevate.dashboard.json.string
 import io.github.simllll.panelelevate.dashboard.theme.HaTheme
 import io.github.simllll.panelelevate.dashboard.ui.HaButton
 import io.github.simllll.panelelevate.dashboard.ui.HaSlider
+import io.github.simllll.panelelevate.dashboard.ui.HaSwitch
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -72,13 +76,15 @@ private const val SET_TILT_POSITION = 128
 
 @Composable
 internal fun NativeTileFeature(ctx: CardContext, entity: EntityState, config: JsonObject) {
-    if (entity.isUnavailable || entity.state == "unknown") return
+    val feature = config.string("type")
+    val available = !entity.isUnavailable && !entity.isUnknown
+    if (!available && feature != "toggle") return
     val modes = entity.attr("supported_color_modes").asStringList()
     val kelvinRange = colorTemperatureRange(entity)
     fun call(service: String, vararg data: Pair<String, Any?>) {
         ctx.actions.callService(entity.domain, service, jsonOf("entity_id" to entity.entityId, *data), null)
     }
-    when (config.string("type")) {
+    when (feature) {
         "light-brightness" -> if (entity.domain == "light" && modes.any { it in dimmableModes }) {
             val value = if (entity.isActive()) (entity.attrDouble("brightness") ?: 0.0).toFloat() / 2.55f else 0f
             LabeledSlider("Brightness", value, "%") { level ->
@@ -88,7 +94,7 @@ internal fun NativeTileFeature(ctx: CardContext, entity: EntityState, config: Js
         }
         "light-color-temp" -> if (entity.domain == "light" && "color_temp" in modes && kelvinRange != null) {
             val value = entity.attrDouble("color_temp_kelvin")?.toFloat() ?: (kelvinRange.start + kelvinRange.endInclusive) / 2
-            LabeledSlider("Color temperature", value, " K", kelvinRange) {
+            LabeledSlider("Color temperature", value, " K", kelvinRange, color = HaTheme.colors.secondaryText) {
                 call("turn_on", "color_temp_kelvin" to it.roundToInt())
             }
         }
@@ -140,9 +146,9 @@ internal fun NativeTileFeature(ctx: CardContext, entity: EntityState, config: Js
                 }
             }
         }
-        "toggle" -> HaButton(if (entity.isActive()) "Turn off" else "Turn on", {
-            ctx.actions.callService("homeassistant", "toggle", jsonOf("entity_id" to entity.entityId), null)
-        })
+        "toggle" -> HaSwitch(entity.isActive(), onCheckedChange = { checked ->
+            ctx.actions.callService("homeassistant", if (checked) "turn_on" else "turn_off", jsonOf("entity_id" to entity.entityId), null)
+        }, enabled = available, modifier = Modifier.semantics { contentDescription = entity.friendlyName })
     }
 }
 
@@ -175,9 +181,10 @@ private fun LabeledSlider(
     value: Float,
     unit: String,
     range: ClosedFloatingPointRange<Float> = 0f..100f,
+    color: Color = HaTheme.colors.primary,
     onChange: (Float) -> Unit,
 ) {
-    HaSlider(value, onChange, range = range, height = 42.dp, label = { "$name · ${it.roundToInt()}$unit" })
+    HaSlider(value, onChange, range = range, color = color, height = 42.dp, label = { "$name · ${it.roundToInt()}$unit" })
 }
 
 @Composable
@@ -191,7 +198,9 @@ internal fun NativeSelect(selected: String, options: List<String>, onSelect: (St
     Box(Modifier.fillMaxWidth().onSizeChanged { anchorWidth = with(density) { it.width.toDp() } }) {
         HaButton("$selected  ▾", { open = true }, Modifier.fillMaxWidth())
         if (open) {
-            Popup(SelectMenuPosition, onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
+            // A focusable application panel window makes Android 8 leave immersive mode.
+            BackHandler { open = false }
+            Popup(SelectMenuPosition, onDismissRequest = { open = false }, properties = PopupProperties(focusable = false)) {
                 Column(
                     Modifier
                         .size(width = anchorWidth.coerceAtLeast(140.dp), height = (options.size * 44).dp.coerceAtMost(220.dp))
@@ -247,20 +256,26 @@ private fun defaultColors(modes: List<String>, range: ClosedFloatingPointRange<F
 @Composable
 private fun ColorFavorites(favorites: List<JsonObject>, onSelect: (JsonObject) -> Unit) {
     if (favorites.isEmpty()) return
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        favorites.forEachIndexed { index, color ->
-            val rgb = color["rgb_color"].asArray()?.mapNotNull { it.asInt() }
-            val kelvin = color["color_temp_kelvin"].asInt()
-            val hs = color["hs_color"].asArray()?.mapNotNull { it.asDouble() }
-            val swatch = when {
-                rgb?.size == 3 -> Color(rgb[0].coerceIn(0, 255), rgb[1].coerceIn(0, 255), rgb[2].coerceIn(0, 255))
-                hs?.size == 2 -> Color.hsv(hs[0].toFloat().coerceIn(0f, 360f), (hs[1] / 100).toFloat().coerceIn(0f, 1f), 1f)
-                kelvin != null -> temperatureRgb(kelvin).let { Color(it[0], it[1], it[2]) }
-                else -> HaTheme.colors.primary
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val gap = 6.dp
+        val fit = maxWidth >= 44.dp * favorites.size + gap * (favorites.size - 1)
+        val row = if (fit) Modifier.fillMaxWidth() else Modifier.horizontalScroll(rememberScrollState())
+        Row(row, horizontalArrangement = Arrangement.spacedBy(gap)) {
+            favorites.forEachIndexed { index, color ->
+                val rgb = color["rgb_color"].asArray()?.mapNotNull { it.asInt() }
+                val kelvin = color["color_temp_kelvin"].asInt()
+                val hs = color["hs_color"].asArray()?.mapNotNull { it.asDouble() }
+                val swatch = when {
+                    rgb?.size == 3 -> Color(rgb[0].coerceIn(0, 255), rgb[1].coerceIn(0, 255), rgb[2].coerceIn(0, 255))
+                    hs?.size == 2 -> Color.hsv(hs[0].toFloat().coerceIn(0f, 360f), (hs[1] / 100).toFloat().coerceIn(0f, 1f), 1f)
+                    kelvin != null -> temperatureRgb(kelvin).let { Color(it[0], it[1], it[2]) }
+                    else -> HaTheme.colors.primary
+                }
+                val label = kelvin?.let { "$it K" } ?: "Favorite color ${index + 1}"
+                val size = if (fit) Modifier.weight(1f).height(44.dp) else Modifier.size(44.dp)
+                Box(size.clip(RoundedCornerShape(12.dp)).background(swatch)
+                    .semantics { contentDescription = label }.clickable { onSelect(color) })
             }
-            val label = kelvin?.let { "$it K" } ?: "Favorite color ${index + 1}"
-            Box(Modifier.size(44.dp, 40.dp).clip(RoundedCornerShape(12.dp)).background(swatch)
-                .semantics { contentDescription = label }.clickable { onSelect(color) })
         }
     }
 }

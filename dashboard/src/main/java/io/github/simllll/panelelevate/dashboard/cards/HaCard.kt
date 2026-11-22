@@ -34,6 +34,7 @@ fun HaCard(
     background: Color = HaTheme.colors.cardBackground,
     border: Boolean = true,
     clip: Boolean = false,
+    propagateMinConstraints: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val d = HaTheme.dimens
@@ -43,6 +44,7 @@ fun HaCard(
             .then(if (clip) Modifier.clip(shape) else Modifier)
             .background(background, shape)
             .then(if (border) Modifier.border(d.cardBorderWidth, HaTheme.colors.divider, shape) else Modifier),
+        propagateMinConstraints = propagateMinConstraints,
         content = content,
     )
 }

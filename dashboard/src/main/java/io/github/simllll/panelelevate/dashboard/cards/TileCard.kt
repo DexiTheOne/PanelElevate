@@ -51,7 +51,8 @@ class TileCard(private val config: JsonObject) : CardRenderer {
     private val vertical = config.bool("vertical") == true
     private val stateContent: List<String> = config["state_content"].asStringList()
     private val features = config.objects("features").filter { it.string("type") in nativeTileFeatures }
-    private val inlineFeatures = config.string("features_position") == "inline" && !vertical
+    private val headerSwitch = features.singleOrNull()?.string("type") == "toggle" && !vertical
+    private val inlineFeatures = !vertical && (headerSwitch || config.string("features_position") == "inline")
 
     override fun gridOptions(): GridOptions {
         val featureRows = if (inlineFeatures) 0 else features.size
@@ -74,7 +75,7 @@ class TileCard(private val config: JsonObject) : CardRenderer {
         val name = config.string("name") ?: entity?.friendlyName ?: entityId.orEmpty()
         val stateText = if (config.bool("hide_state") == true || entity == null) null else stateDisplay(ctx, entity)
         val iconAction = config.obj("icon_tap_action")
-        HaCard(modifier.fillMaxSize()) {
+        HaCard(modifier.fillMaxSize(), propagateMinConstraints = true) {
             val content = Modifier
                 .fillMaxWidth()
                 .haActions(ctx, config, pressColor = tileColor)
@@ -105,22 +106,23 @@ class TileCard(private val config: JsonObject) : CardRenderer {
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     icon()
-                    TileInfo(name, stateText, centered = false, Modifier.weight(1f))
+                    TileInfo(name, stateText, centered = false, Modifier.weight(1f), primaryMaxLines = if (headerSwitch) 2 else 1)
                 }
             } }
             if (features.isEmpty() || entity == null) {
                 header(content.fillMaxSize())
             } else if (inlineFeatures) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxSize().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
                     header(Modifier.weight(1f).haActions(ctx, config, pressColor = tileColor))
-                    Column(Modifier.weight(1f).widthIn(max = 240.dp).padding(end = 10.dp)) {
+                    val featureWidth = if (headerSwitch) Modifier else Modifier.weight(1f).widthIn(max = 240.dp)
+                    Column(featureWidth.padding(end = 10.dp)) {
                         features.forEach { NativeTileFeature(ctx, entity, it) }
                     }
                 }
             } else {
-                Column(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
                     header(content)
-                    Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         features.forEach { NativeTileFeature(ctx, entity, it) }
                     }
                 }
@@ -186,15 +188,15 @@ fun TileIcon(ctx: CardContext, entity: EntityState?, icon: String?, color: Color
 
 /** `ha-tile-info`: primary 14px/500/1.6 (0.1px), secondary 12px/400/1.2 (0.4px). */
 @Composable
-fun TileInfo(primary: String, secondary: String?, centered: Boolean, modifier: Modifier = Modifier) {
+fun TileInfo(primary: String, secondary: String?, centered: Boolean, modifier: Modifier = Modifier, primaryMaxLines: Int = 1) {
     val t = HaTheme.typography
     val c = HaTheme.colors
     val align = if (centered) TextAlign.Center else TextAlign.Start
     Column(modifier.then(if (centered) Modifier.fillMaxWidth() else Modifier), horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start) {
         BasicText(
             primary,
-            style = t.style(t.sizeM, FontWeight.Medium, t.lineHeightNormal, 0.1.sp, c.primaryText).copy(textAlign = align),
-            maxLines = 1,
+            style = t.style(t.sizeM, FontWeight.Medium, if (primaryMaxLines > 1) t.lineHeightCondensed else t.lineHeightNormal, 0.1.sp, c.primaryText).copy(textAlign = align),
+            maxLines = primaryMaxLines,
             overflow = TextOverflow.Ellipsis,
         )
         if (secondary != null) {
