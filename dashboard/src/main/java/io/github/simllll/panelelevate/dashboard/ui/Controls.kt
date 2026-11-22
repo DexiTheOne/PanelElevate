@@ -5,7 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -30,18 +31,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.simllll.panelelevate.dashboard.icons.MdiIcon
 import io.github.simllll.panelelevate.dashboard.theme.HaTheme
+import kotlinx.coroutines.delay
+import kotlin.math.abs
 
 /**
  * `ha-switch` (48×24 track, 18px thumb, 1px border) in the dark default theme.
@@ -160,12 +168,30 @@ fun HaSlider(
     color: Color = HaTheme.colors.primary,
     height: Dp = 48.dp,
     label: ((Float) -> String)? = null,
+    track: Brush? = null,
+    optimisticTolerance: Float? = null,
 ) {
     var width by remember { mutableFloatStateOf(1f) }
     var dragValue by remember { mutableStateOf<Float?>(null) }
-    val shown = dragValue ?: value
-    val fraction = ((shown - range.start) / (range.endInclusive - range.start)).coerceIn(0f, 1f)
+    var pending by remember(range) { mutableStateOf<SliderRequest?>(null) }
+    val shown = (dragValue ?: pending?.value ?: value).coerceIn(range)
+    val fraction = (shown - range.start) / (range.endInclusive - range.start)
     val latestFinish by rememberUpdatedState(onValueChangeFinished)
+    val latestTolerance by rememberUpdatedState(optimisticTolerance)
+    LaunchedEffect(pending) {
+        if (pending != null) {
+            delay(4_000)
+            pending = null
+        }
+    }
+    LaunchedEffect(pending, value, optimisticTolerance) {
+        val request = pending ?: return@LaunchedEffect
+        if (optimisticTolerance != null && abs(value - request.value) <= optimisticTolerance) pending = null
+    }
+    fun finish(next: Float) {
+        if (latestTolerance != null) pending = SliderRequest(next)
+        latestFinish(next)
+    }
     fun valueAt(x: Float) = range.start + (x / width).coerceIn(0f, 1f) * (range.endInclusive - range.start)
     val shape = RoundedCornerShape(HaTheme.dimens.radiusLg)
     Box(
@@ -174,26 +200,35 @@ fun HaSlider(
             .height(height)
             .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
             .clip(shape)
-            .background(color.copy(alpha = 0.2f))
+            .then(if (track == null) Modifier.background(color.copy(alpha = 0.2f)) else Modifier.background(track))
+            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(shown, range) }
             .pointerInput(range) {
-                detectTapGestures { latestFinish(valueAt(it.x)) }
+                detectTapGestures { finish(valueAt(it.x)) }
             }
             .pointerInput(range) {
-                detectDragGestures(
+                detectHorizontalDragGestures(
                     onDragStart = { dragValue = valueAt(it.x) },
-                    onDragEnd = { dragValue?.let { latestFinish(it) }; dragValue = null },
+                    onDragEnd = { dragValue?.let(::finish); dragValue = null },
                     onDragCancel = { dragValue = null },
                 ) { change, _ -> dragValue = valueAt(change.position.x) }
             }
     ) {
-        Box(
+        if (track == null) Box(
             Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(fraction)
                 .background(color)
+        ) else Box(
+            Modifier.align(BiasAlignment(fraction * 2f - 1f, 0f))
+                .padding(horizontal = 3.dp)
+                .size(width = 7.dp, height = 30.dp)
+                .background(Color.White, RoundedCornerShape(3.dp))
+                .border(1.dp, Color.Black.copy(alpha = 0.8f), RoundedCornerShape(3.dp)),
         )
         if (label != null) {
             BasicText(label(shown), Modifier.align(Alignment.Center), style = HaTheme.typography.style(color = HaTheme.colors.primaryText))
         }
     }
 }
+
+private class SliderRequest(val value: Float)

@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -87,16 +88,22 @@ internal fun NativeTileFeature(ctx: CardContext, entity: EntityState, config: Js
     when (feature) {
         "light-brightness" -> if (entity.domain == "light" && modes.any { it in dimmableModes }) {
             val value = if (entity.isActive()) (entity.attrDouble("brightness") ?: 0.0).toFloat() / 2.55f else 0f
-            LabeledSlider("Brightness", value, "%") { level ->
+            LabeledSlider("Brightness", value, "%", optimisticTolerance = 0.75f) { level ->
                 if (level.roundToInt() == 0) call("turn_off")
                 else call("turn_on", "brightness_pct" to level.roundToInt())
             }
         }
         "light-color-temp" -> if (entity.domain == "light" && "color_temp" in modes && kelvinRange != null) {
             val value = entity.attrDouble("color_temp_kelvin")?.toFloat() ?: (kelvinRange.start + kelvinRange.endInclusive) / 2
-            LabeledSlider("Color temperature", value, " K", kelvinRange, color = HaTheme.colors.secondaryText) {
-                call("turn_on", "color_temp_kelvin" to it.roundToInt())
+            val track = remember(kelvinRange) {
+                Brush.horizontalGradient((0..8).map { step ->
+                    val kelvin = kelvinRange.start + (kelvinRange.endInclusive - kelvinRange.start) * step / 8
+                    temperatureRgb(kelvin.roundToInt()).let { Color(it[0], it[1], it[2]) }
+                })
             }
+            HaSlider(value, { call("turn_on", "color_temp_kelvin" to it.roundToInt()) },
+                modifier = Modifier.semantics { contentDescription = "Color temperature, warm to cool" },
+                range = kelvinRange, height = 42.dp, track = track, optimisticTolerance = 25f)
         }
         "light-color-favorites" -> if (entity.domain == "light") {
             val options = registryOptions(ctx, entity)
@@ -180,11 +187,10 @@ private fun LabeledSlider(
     name: String,
     value: Float,
     unit: String,
-    range: ClosedFloatingPointRange<Float> = 0f..100f,
-    color: Color = HaTheme.colors.primary,
+    optimisticTolerance: Float? = null,
     onChange: (Float) -> Unit,
 ) {
-    HaSlider(value, onChange, range = range, color = color, height = 42.dp, label = { "$name · ${it.roundToInt()}$unit" })
+    HaSlider(value, onChange, height = 42.dp, label = { "$name · ${it.roundToInt()}$unit" }, optimisticTolerance = optimisticTolerance)
 }
 
 @Composable
