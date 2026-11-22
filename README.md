@@ -20,6 +20,8 @@ The native tile renderer handles `cover-tilt-favorite`, `cover-tilt-position`,
 `light-brightness`, `light-color-temp`, `light-color-favorites`, `select-options`,
 `target-temperature`, and `toggle`. Use `card_layout: panel` on a Bubble media
 player for the larger two-row layout. Existing Bubble media layouts stay compact.
+The native `custom:curtain-countdown-card` accepts explicit `timer`, `duration`,
+`profile`, `start`, and `stop` entity IDs for an existing countdown setup.
 
 > [!CAUTION]
 > All content in this repository is provided "as is" and may render your device unusable. Always exercise caution when working with your device. No warranty or guarantee is provided.

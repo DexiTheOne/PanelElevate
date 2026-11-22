@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -57,6 +58,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.math.roundToInt
+import kotlin.math.ln
+import kotlin.math.pow
 
 internal val nativeTileFeatures = setOf(
     "light-brightness", "light-color-temp", "light-color-favorites", "cover-tilt-position",
@@ -107,10 +110,14 @@ internal fun NativeTileFeature(ctx: CardContext, entity: EntityState, config: Js
             val positions = options?.obj("cover")?.get("favorite_tilt_positions").asArray()
                 ?.mapNotNull { it.asInt()?.takeIf { pos -> pos in 0..100 } }
                 ?: listOf(0, 25, 50, 75, 100)
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                positions.distinct().forEach { position ->
+            val presets = positions.distinct()
+            val scroll = presets.size > 5
+            Row(Modifier.fillMaxWidth().then(if (scroll) Modifier.horizontalScroll(rememberScrollState()) else Modifier), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                presets.forEach { position ->
                     HaButton("$position%", { call("set_cover_tilt_position", "tilt_position" to position) },
-                        filled = entity.attrDouble("current_tilt_position")?.roundToInt() == position)
+                        modifier = if (scroll) Modifier else Modifier.weight(1f),
+                        filled = entity.attrDouble("current_tilt_position")?.roundToInt() == position,
+                        contentPadding = PaddingValues(horizontal = 8.dp))
                 }
             }
         }
@@ -170,14 +177,11 @@ private fun LabeledSlider(
     range: ClosedFloatingPointRange<Float> = 0f..100f,
     onChange: (Float) -> Unit,
 ) {
-    Box(contentAlignment = Alignment.Center) {
-        HaSlider(value, onChange, range = range, height = 42.dp)
-        BasicText("$name · ${value.roundToInt()}$unit", style = HaTheme.typography.style(color = HaTheme.colors.primaryText))
-    }
+    HaSlider(value, onChange, range = range, height = 42.dp, label = { "$name · ${it.roundToInt()}$unit" })
 }
 
 @Composable
-private fun NativeSelect(selected: String, options: List<String>, onSelect: (String) -> Unit) {
+internal fun NativeSelect(selected: String, options: List<String>, onSelect: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     var anchorWidth by remember { mutableStateOf(0.dp) }
     val density = LocalDensity.current
@@ -229,9 +233,13 @@ private val defaultRgb = listOf(
 )
 
 private fun defaultColors(modes: List<String>, range: ClosedFloatingPointRange<Float>?): List<JsonObject> {
-    val temperatures = if ("color_temp" in modes && range != null) (0..3).map { step ->
-        jsonOf("color_temp_kelvin" to (range.start + (range.endInclusive - range.start) * step / 3).roundToInt())
-    } else emptyList()
+    val temperatures = when {
+        "color_temp" in modes && range != null -> (0..3).map { step ->
+            jsonOf("color_temp_kelvin" to (range.start + (range.endInclusive - range.start) * step / 3).roundToInt())
+        }
+        modes.any { it in colorModes } -> listOf(2000, 3500, 5000, 6500).map { jsonOf("rgb_color" to temperatureRgb(it)) }
+        else -> emptyList()
+    }
     val colors = if (modes.any { it in colorModes }) defaultRgb.map { jsonOf("rgb_color" to it) } else emptyList()
     return temperatures + colors
 }
@@ -247,7 +255,7 @@ private fun ColorFavorites(favorites: List<JsonObject>, onSelect: (JsonObject) -
             val swatch = when {
                 rgb?.size == 3 -> Color(rgb[0].coerceIn(0, 255), rgb[1].coerceIn(0, 255), rgb[2].coerceIn(0, 255))
                 hs?.size == 2 -> Color.hsv(hs[0].toFloat().coerceIn(0f, 360f), (hs[1] / 100).toFloat().coerceIn(0f, 1f), 1f)
-                kelvin != null -> Color(0xFFFFB66E).let { warm -> androidx.compose.ui.graphics.lerp(warm, Color(0xFFDCEBFF), ((kelvin - 2000) / 4500f).coerceIn(0f, 1f)) }
+                kelvin != null -> temperatureRgb(kelvin).let { Color(it[0], it[1], it[2]) }
                 else -> HaTheme.colors.primary
             }
             val label = kelvin?.let { "$it K" } ?: "Favorite color ${index + 1}"
@@ -255,4 +263,17 @@ private fun ColorFavorites(favorites: List<JsonObject>, onSelect: (JsonObject) -
                 .semantics { contentDescription = label }.clickable { onSelect(color) })
         }
     }
+}
+
+// Same black-body color approximation used by HA's default favorite swatches.
+private fun temperatureRgb(kelvin: Int): List<Int> {
+    val t = kelvin.coerceIn(1000, 40000) / 100.0
+    val red = if (t <= 66) 255.0 else 329.698727446 * (t - 60).pow(-0.1332047592)
+    val green = if (t <= 66) 99.4708025861 * ln(t) - 161.1195681661 else 288.1221695283 * (t - 60).pow(-0.0755148492)
+    val blue = when {
+        t >= 66 -> 255.0
+        t <= 19 -> 0.0
+        else -> 138.5177312231 * ln(t - 10) - 305.0447927307
+    }
+    return listOf(red, green, blue).map { it.roundToInt().coerceIn(0, 255) }
 }

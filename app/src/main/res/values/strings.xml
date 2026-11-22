@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">PanelElevate</string>
+    <string name="app_name">PanelElevate Parity</string>
 
     <!-- Sync Preferences -->
     <string name="findIPButtonText">Search for HA URL</string>

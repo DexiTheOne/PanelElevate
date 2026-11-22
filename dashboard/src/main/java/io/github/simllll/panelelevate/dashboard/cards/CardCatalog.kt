@@ -29,6 +29,7 @@ object CardCatalog {
         registry.register("horizontal-stack") { HorizontalStackCard(it) }
         registry.register("grid") { GridCard(it) }
         registry.register("custom:nspanel-grouped-controls") { GridCard(it.obj("group") ?: it) }
+        registry.register("custom:curtain-countdown-card") { CountdownCard(it) }
         registry.register("weather-forecast") { WeatherForecastCard(it) }
         registry.register("history-graph") { HistoryGraphCard(it) }
         registry.register("iframe") { IframeCard(it) }

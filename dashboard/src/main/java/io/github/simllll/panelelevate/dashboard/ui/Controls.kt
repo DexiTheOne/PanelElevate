@@ -159,6 +159,7 @@ fun HaSlider(
     range: ClosedFloatingPointRange<Float> = 0f..100f,
     color: Color = HaTheme.colors.primary,
     height: Dp = 48.dp,
+    label: ((Float) -> String)? = null,
 ) {
     var width by remember { mutableFloatStateOf(1f) }
     var dragValue by remember { mutableStateOf<Float?>(null) }
@@ -191,5 +192,8 @@ fun HaSlider(
                 .fillMaxWidth(fraction)
                 .background(color)
         )
+        if (label != null) {
+            BasicText(label(shown), Modifier.align(Alignment.Center), style = HaTheme.typography.style(color = HaTheme.colors.primaryText))
+        }
     }
 }
