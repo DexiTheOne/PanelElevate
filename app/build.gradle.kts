@@ -8,7 +8,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "io.github.simllll.panelelevate"
+        applicationId = "io.github.dexitheone.panelelevate"
         minSdk = 24
         //noinspection ExpiredTargetSdkVersion
         targetSdk = 24

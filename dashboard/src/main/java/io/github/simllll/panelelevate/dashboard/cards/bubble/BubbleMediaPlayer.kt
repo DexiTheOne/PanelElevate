@@ -68,24 +68,26 @@ import kotlin.math.roundToInt
 class BubbleMediaPlayerCard(private val config: JsonObject) : CardRenderer {
     private val entityId = config.string("entity")
     private val hide = config.obj("hide")
+    private val expanded = config.string("card_layout") == "panel" || config.string("type") == "custom:mushroom-media-player-card"
     private val buttonActions = (config.obj("button_action") ?: config).with("entity", config["entity"]).let {
         if (it.obj("tap_action") != null) it else it.with("tap_action", jsonOf("action" to "more-info"))
     }
     private val iconActions = if (config.obj("tap_action") != null) config else config.with("tap_action", jsonOf("action" to "more-info"))
 
-    override fun gridOptions() = GridOptions(columns = 12)
+    override fun gridOptions() = if (expanded) GridOptions(columns = 12, rows = 2, minRows = 2)
+    else GridOptions(columns = 12)
 
     @Composable
     override fun Content(ctx: CardContext, modifier: Modifier) {
         val c = HaTheme.colors
         val entity = ctx.entity(entityId)
-        val height = bubbleHeight(config)
+        val height = if (expanded) 120.dp else bubbleHeight(config)
         var volumeOpen by remember { mutableStateOf(false) }
         Box(
             modifier
                 .fillMaxWidth()
                 .height(height)
-                .clip(RoundedCornerShape(height / 2))
+                .clip(RoundedCornerShape(if (expanded) 16.dp else height / 2))
                 .background(BubbleColors.main)
                 .haActions(ctx, buttonActions, defaultTap = buttonActions.obj("tap_action"))
                 .then(if (entity?.isUnavailable == true) Modifier.alpha(0.5f) else Modifier),
@@ -96,12 +98,13 @@ class BubbleMediaPlayerCard(private val config: JsonObject) : CardRenderer {
                 VolumeRow(ctx, entity, onClose = { volumeOpen = false })
                 return@Box
             }
-            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            val details: @Composable (Modifier) -> Unit = { detailModifier ->
+                Row(detailModifier, verticalAlignment = Alignment.CenterVertically) {
                 if (config.bool("show_icon") != false) {
                     BubbleIconContainer(
-                        if (height == 56.dp) 42.dp else 38.dp,
+                        if (expanded || height == 56.dp) 42.dp else 38.dp,
                         Modifier
-                            .padding(start = if (height == 56.dp) 8.dp else 6.dp)
+                            .padding(start = if (expanded || height == 56.dp) 8.dp else 6.dp)
                             .clip(CircleShape)
                             .haActions(ctx, iconActions, defaultTap = iconActions.obj("tap_action")),
                     ) {
@@ -111,6 +114,15 @@ class BubbleMediaPlayerCard(private val config: JsonObject) : CardRenderer {
                     }
                 }
                 Info(ctx, entity, Modifier.weight(1f))
+                }
+            }
+            if (expanded) {
+                Column(Modifier.fillMaxSize().padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    details(Modifier.fillMaxWidth().weight(1f))
+                    Buttons(ctx, entity, onVolume = { volumeOpen = true })
+                }
+            } else Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                details(Modifier.weight(1f))
                 Buttons(ctx, entity, onVolume = { volumeOpen = true })
             }
         }
@@ -151,6 +163,7 @@ class BubbleMediaPlayerCard(private val config: JsonObject) : CardRenderer {
         val f = entity.supportedFeatures
         val off = entity.state in OFF_STATES
         val playing = entity.state == "playing"
+        val buttonSize = if (expanded) 48.dp else 36.dp
         fun hidden(key: String) = hide?.bool(key) == true
         fun call(service: String, data: JsonObject = jsonOf()) =
             ctx.actions.callService("media_player", service, JsonObject(data + ("entity_id" to JsonPrimitive(entity.entityId))), null)
@@ -160,12 +173,12 @@ class BubbleMediaPlayerCard(private val config: JsonObject) : CardRenderer {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (!hidden("power_button") && (f and (TURN_ON or TURN_OFF)) != 0) {
-                MediaButton("mdi:power", { call(if (off) "turn_on" else "turn_off") })
+                MediaButton("mdi:power", { call(if (off) "turn_on" else "turn_off") }, size = buttonSize)
             }
             if (!off) {
-                if (!hidden("previous_button") && f and PREVIOUS_TRACK != 0) MediaButton("mdi:skip-previous", { call("media_previous_track") })
-                if (!hidden("next_button") && f and NEXT_TRACK != 0) MediaButton("mdi:skip-next", { call("media_next_track") })
-                if (!hidden("volume_button") && f and VOLUME_SET != 0) MediaButton("mdi:volume-high", onVolume)
+                if (!hidden("previous_button") && f and PREVIOUS_TRACK != 0) MediaButton("mdi:skip-previous", { call("media_previous_track") }, size = buttonSize)
+                if (!hidden("next_button") && f and NEXT_TRACK != 0) MediaButton("mdi:skip-next", { call("media_next_track") }, size = buttonSize)
+                if (!hidden("volume_button") && f and VOLUME_SET != 0) MediaButton("mdi:volume-high", onVolume, size = buttonSize)
                 if (!hidden("play_pause_button") && f and (PAUSE or PLAY or STOP) != 0) {
                     MediaButton(
                         if (playing) "mdi:pause" else "mdi:play",
@@ -180,6 +193,7 @@ class BubbleMediaPlayerCard(private val config: JsonObject) : CardRenderer {
                         },
                         background = BubbleColors.accent,
                         tint = HaTheme.colors.primaryBackground,
+                        size = buttonSize,
                     )
                 }
             }

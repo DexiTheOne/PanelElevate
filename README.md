@@ -1,5 +1,26 @@
 # PanelElevate
 
+## Native dashboard fork
+
+The Android app installs alongside upstream PanelElevate using the application
+ID `io.github.dexitheone.panelelevate`. Build with JDK 17 and Android SDK 35:
+
+```sh
+export ANDROID_USER_HOME="$PWD/.local-build/android"
+./gradlew :dashboard:testDebugUnitTest :app:assembleDebug
+adb -s "$PANEL_SERIAL" install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+Keep the local debug signing key to install subsequent builds in place. The
+device's dashboard settings are separate from the upstream app. Use the
+dashboard receiver documented below with the fork's application ID before
+the slash and the original fully qualified receiver class after it.
+
+The native tile renderer handles `cover-tilt-favorite`, `cover-tilt-position`,
+`light-brightness`, `light-color-temp`, `light-color-favorites`, `select-options`,
+`target-temperature`, and `toggle`. Use `card_layout: panel` on a Bubble media
+player for the larger two-row layout. Existing Bubble media layouts stay compact.
+
 > [!CAUTION]
 > All content in this repository is provided "as is" and may render your device unusable. Always exercise caution when working with your device. No warranty or guarantee is provided.
 

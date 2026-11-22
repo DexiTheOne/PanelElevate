@@ -3,6 +3,8 @@ package io.github.simllll.panelelevate.dashboard.cards
 import io.github.simllll.panelelevate.dashboard.custom.registerCustomCards
 import io.github.simllll.panelelevate.dashboard.custom.registerCustomRows
 import io.github.simllll.panelelevate.dashboard.cards.bubble.BubbleCard
+import io.github.simllll.panelelevate.dashboard.cards.bubble.BubbleMediaPlayerCard
+import io.github.simllll.panelelevate.dashboard.json.obj
 import io.github.simllll.panelelevate.dashboard.rows.RowRegistry
 import io.github.simllll.panelelevate.dashboard.rows.registerCoreRows
 
@@ -26,6 +28,7 @@ object CardCatalog {
         registry.register("vertical-stack") { VerticalStackCard(it) }
         registry.register("horizontal-stack") { HorizontalStackCard(it) }
         registry.register("grid") { GridCard(it) }
+        registry.register("custom:nspanel-grouped-controls") { GridCard(it.obj("group") ?: it) }
         registry.register("weather-forecast") { WeatherForecastCard(it) }
         registry.register("history-graph") { HistoryGraphCard(it) }
         registry.register("iframe") { IframeCard(it) }
@@ -33,6 +36,7 @@ object CardCatalog {
         registry.registerCustomCards()
         registry.register("alarm-panel") { AlarmPanelCard(it) }
         registry.register("custom:bubble-card") { BubbleCard.create(it) }
+        registry.register("custom:mushroom-media-player-card") { BubbleMediaPlayerCard(it) }
         registry.register("custom:xiaomi-vacuum-map-card") { io.github.simllll.panelelevate.dashboard.cards.vacuum.VacuumMapCard(it) }
     }
 

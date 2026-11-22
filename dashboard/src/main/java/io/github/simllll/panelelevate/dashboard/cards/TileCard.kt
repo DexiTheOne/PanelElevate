@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -27,7 +28,6 @@ import io.github.simllll.panelelevate.dashboard.hass.EntityState
 import io.github.simllll.panelelevate.dashboard.hass.isActive
 import io.github.simllll.panelelevate.dashboard.icons.MdiIcon
 import io.github.simllll.panelelevate.dashboard.image.RemoteImage
-import io.github.simllll.panelelevate.dashboard.json.array
 import io.github.simllll.panelelevate.dashboard.json.asArray
 import io.github.simllll.panelelevate.dashboard.json.asInt
 import io.github.simllll.panelelevate.dashboard.json.asString
@@ -35,13 +35,14 @@ import io.github.simllll.panelelevate.dashboard.json.asStringList
 import io.github.simllll.panelelevate.dashboard.json.bool
 import io.github.simllll.panelelevate.dashboard.json.jsonOf
 import io.github.simllll.panelelevate.dashboard.json.obj
+import io.github.simllll.panelelevate.dashboard.json.objects
 import io.github.simllll.panelelevate.dashboard.json.string
 import io.github.simllll.panelelevate.dashboard.theme.CssColors
 import io.github.simllll.panelelevate.dashboard.theme.HaTheme
 import kotlinx.serialization.json.JsonObject
 
 /**
- * `hui-tile-card` without features: 36px icon disc tinted with the state color (20 % background),
+ * `hui-tile-card`: 36px icon disc tinted with the state color (20 % background),
  * name (14px medium) and state (12px). `vertical` stacks them centered.
  * Tap defaults to more-info; `icon_tap_action` is honoured when configured.
  */
@@ -49,9 +50,11 @@ class TileCard(private val config: JsonObject) : CardRenderer {
     private val entityId = config.string("entity")
     private val vertical = config.bool("vertical") == true
     private val stateContent: List<String> = config["state_content"].asStringList()
+    private val features = config.objects("features").filter { it.string("type") in nativeTileFeatures }
+    private val inlineFeatures = config.string("features_position") == "inline" && !vertical
 
     override fun gridOptions(): GridOptions {
-        val featureRows = config.array("features")?.size ?: 0
+        val featureRows = if (inlineFeatures) 0 else features.size
         var rows = 1 + featureRows
         var minColumns = 6
         if (vertical) {
@@ -73,7 +76,7 @@ class TileCard(private val config: JsonObject) : CardRenderer {
         val iconAction = config.obj("icon_tap_action")
         HaCard(modifier.fillMaxSize()) {
             val content = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .haActions(ctx, config, pressColor = tileColor)
             val icon: @Composable () -> Unit = {
                 TileIcon(
@@ -86,9 +89,9 @@ class TileCard(private val config: JsonObject) : CardRenderer {
                     ),
                 )
             }
-            if (vertical) {
+            val header: @Composable (Modifier) -> Unit = { headerModifier -> if (vertical) {
                 Column(
-                    content.padding(vertical = 10.dp, horizontal = 8.dp),
+                    headerModifier.padding(vertical = 10.dp, horizontal = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
                 ) {
@@ -97,12 +100,29 @@ class TileCard(private val config: JsonObject) : CardRenderer {
                 }
             } else {
                 Row(
-                    content.heightIn(min = 56.dp).padding(horizontal = 10.dp),
+                    headerModifier.heightIn(min = 56.dp).padding(horizontal = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     icon()
                     TileInfo(name, stateText, centered = false, Modifier.weight(1f))
+                }
+            } }
+            if (features.isEmpty() || entity == null) {
+                header(content.fillMaxSize())
+            } else if (inlineFeatures) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    header(Modifier.weight(1f).haActions(ctx, config, pressColor = tileColor))
+                    Column(Modifier.weight(1f).widthIn(max = 240.dp).padding(end = 10.dp)) {
+                        features.forEach { NativeTileFeature(ctx, entity, it) }
+                    }
+                }
+            } else {
+                Column(Modifier.fillMaxWidth()) {
+                    header(content)
+                    Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        features.forEach { NativeTileFeature(ctx, entity, it) }
+                    }
                 }
             }
         }
