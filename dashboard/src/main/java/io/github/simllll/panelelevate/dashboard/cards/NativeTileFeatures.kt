@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,7 +77,7 @@ private val dimmableModes = colorModes + setOf("brightness", "color_temp", "whit
 private const val SET_TILT_POSITION = 128
 
 @Composable
-internal fun NativeTileFeature(ctx: CardContext, entity: EntityState, config: JsonObject) {
+internal fun NativeTileFeature(ctx: CardContext, entity: EntityState, config: JsonObject, temperaturePreview: MutableState<Float?>) {
     val feature = config.string("type")
     val available = !entity.isUnavailable && !entity.isUnknown
     if (!available && feature != "toggle") return
@@ -88,10 +89,15 @@ internal fun NativeTileFeature(ctx: CardContext, entity: EntityState, config: Js
     when (feature) {
         "light-brightness" -> if (entity.domain == "light" && modes.any { it in dimmableModes }) {
             val value = if (entity.isActive()) (entity.attrDouble("brightness") ?: 0.0).toFloat() / 2.55f else 0f
-            LabeledSlider("Brightness", value, "%", optimisticTolerance = 0.75f) { level ->
+            val kelvin = temperaturePreview.value?.roundToInt() ?: entity.attrDouble("color_temp_kelvin")?.roundToInt()
+            val rgb = if (kelvin != null) temperatureRgb(kelvin)
+            else entity.attr("rgb_color").asArray()?.mapNotNull { it.asInt()?.coerceIn(0, 255) }
+            val tint = if (rgb?.size == 3) Color(rgb[0], rgb[1], rgb[2]) else HaTheme.colors.primary
+            HaSlider(value, { level ->
                 if (level.roundToInt() == 0) call("turn_off")
                 else call("turn_on", "brightness_pct" to level.roundToInt())
-            }
+            }, modifier = Modifier.semantics { contentDescription = "Brightness" }, color = tint,
+                height = 42.dp, optimisticTolerance = 0.75f, fillHandle = true)
         }
         "light-color-temp" -> if (entity.domain == "light" && "color_temp" in modes && kelvinRange != null) {
             val value = entity.attrDouble("color_temp_kelvin")?.toFloat() ?: (kelvinRange.start + kelvinRange.endInclusive) / 2
@@ -103,7 +109,8 @@ internal fun NativeTileFeature(ctx: CardContext, entity: EntityState, config: Js
             }
             HaSlider(value, { call("turn_on", "color_temp_kelvin" to it.roundToInt()) },
                 modifier = Modifier.semantics { contentDescription = "Color temperature, warm to cool" },
-                range = kelvinRange, height = 42.dp, track = track, optimisticTolerance = 25f)
+                range = kelvinRange, height = 42.dp, track = track, optimisticTolerance = 25f,
+                onPreviewChange = { temperaturePreview.value = it })
         }
         "light-color-favorites" -> if (entity.domain == "light") {
             val options = registryOptions(ctx, entity)
@@ -187,10 +194,9 @@ private fun LabeledSlider(
     name: String,
     value: Float,
     unit: String,
-    optimisticTolerance: Float? = null,
     onChange: (Float) -> Unit,
 ) {
-    HaSlider(value, onChange, height = 42.dp, label = { "$name · ${it.roundToInt()}$unit" }, optimisticTolerance = optimisticTolerance)
+    HaSlider(value, onChange, height = 42.dp, label = { "$name · ${it.roundToInt()}$unit" })
 }
 
 @Composable

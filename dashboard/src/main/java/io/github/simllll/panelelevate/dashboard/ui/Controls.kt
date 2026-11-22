@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
@@ -170,11 +172,15 @@ fun HaSlider(
     label: ((Float) -> String)? = null,
     track: Brush? = null,
     optimisticTolerance: Float? = null,
+    fillHandle: Boolean = false,
+    onPreviewChange: ((Float?) -> Unit)? = null,
 ) {
     var width by remember { mutableFloatStateOf(1f) }
     var dragValue by remember { mutableStateOf<Float?>(null) }
     var pending by remember(range) { mutableStateOf<SliderRequest?>(null) }
-    val shown = (dragValue ?: pending?.value ?: value).coerceIn(range)
+    val preview = dragValue ?: pending?.value
+    val shown = (preview ?: value).coerceIn(range)
+    if (onPreviewChange != null) SideEffect { onPreviewChange(preview) }
     val fraction = (shown - range.start) / (range.endInclusive - range.start)
     val latestFinish by rememberUpdatedState(onValueChangeFinished)
     val latestTolerance by rememberUpdatedState(optimisticTolerance)
@@ -193,7 +199,9 @@ fun HaSlider(
         latestFinish(next)
     }
     fun valueAt(x: Float) = range.start + (x / width).coerceIn(0f, 1f) * (range.endInclusive - range.start)
-    val shape = RoundedCornerShape(HaTheme.dimens.radiusLg)
+    val shape = RoundedCornerShape(if (fillHandle || track != null) 12.dp else HaTheme.dimens.radiusLg)
+    val fillShape = RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp)
+    val handleMinWidth = with(LocalDensity.current) { 14.dp.toPx() }
     Box(
         modifier
             .fillMaxWidth()
@@ -217,14 +225,21 @@ fun HaSlider(
             Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(fraction)
-                .background(color)
-        ) else Box(
+                .background(color, if (fillHandle) fillShape else RoundedCornerShape(0.dp)),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            if (fillHandle && width * fraction >= handleMinWidth) {
+                Box(Modifier.padding(end = 6.dp).size(4.dp, 21.dp).background(Color.White, CircleShape))
+            }
+        } else Box(
             Modifier.align(BiasAlignment(fraction * 2f - 1f, 0f))
-                .padding(horizontal = 3.dp)
-                .size(width = 7.dp, height = 30.dp)
-                .background(Color.White, RoundedCornerShape(3.dp))
-                .border(1.dp, Color.Black.copy(alpha = 0.8f), RoundedCornerShape(3.dp)),
-        )
+                .size(width = 11.dp, height = height)
+                .shadow(3.dp, RoundedCornerShape(5.dp))
+                .background(Color.White, RoundedCornerShape(5.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(Modifier.size(width = 4.dp, height = 21.dp).background(Color(0xFFE8E8E8), CircleShape))
+        }
         if (label != null) {
             BasicText(label(shown), Modifier.align(Alignment.Center), style = HaTheme.typography.style(color = HaTheme.colors.primaryText))
         }

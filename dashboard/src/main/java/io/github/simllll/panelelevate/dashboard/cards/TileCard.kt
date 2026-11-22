@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,6 +77,7 @@ class TileCard(private val config: JsonObject) : CardRenderer {
         val name = config.string("name") ?: entity?.friendlyName ?: entityId.orEmpty()
         val stateText = if (config.bool("hide_state") == true || entity == null) null else stateDisplay(ctx, entity)
         val iconAction = config.obj("icon_tap_action")
+        val temperaturePreview = remember(entityId) { mutableStateOf<Float?>(null) }
         HaCard(modifier.fillMaxSize(), propagateMinConstraints = true) {
             val content = Modifier
                 .fillMaxWidth()
@@ -116,14 +119,14 @@ class TileCard(private val config: JsonObject) : CardRenderer {
                     header(Modifier.weight(1f).haActions(ctx, config, pressColor = tileColor))
                     val featureWidth = if (headerSwitch) Modifier else Modifier.weight(1f).widthIn(max = 240.dp)
                     Column(featureWidth.padding(end = 10.dp)) {
-                        features.forEach { NativeTileFeature(ctx, entity, it) }
+                        features.forEach { NativeTileFeature(ctx, entity, it, temperaturePreview) }
                     }
                 }
             } else {
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
                     header(content)
                     Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        features.forEach { NativeTileFeature(ctx, entity, it) }
+                        features.forEach { NativeTileFeature(ctx, entity, it, temperaturePreview) }
                     }
                 }
             }
